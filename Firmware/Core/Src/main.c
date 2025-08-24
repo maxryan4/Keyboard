@@ -38,6 +38,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+void scan_keys();
 
 /* USER CODE END PM */
 
@@ -60,19 +61,26 @@ static void MX_TIM2_Init(void);
 /* USER CODE BEGIN 0 */
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
-typedef struct
-{
-	uint8_t MODIFIER;
-	uint8_t RESERVED;
-	uint8_t KEYCODE1;
-	uint8_t KEYCODE2;
-	uint8_t KEYCODE3;
-	uint8_t KEYCODE4;
-	uint8_t KEYCODE5;
-	uint8_t KEYCODE6;
-} keyboardHID;
+//typedef struct
+//{
+//	uint8_t MODIFIER;
+//	uint8_t RESERVED;
+//	uint8_t KEYCODE1;
+//	uint8_t KEYCODE2;
+//	uint8_t KEYCODE3;
+//	uint8_t KEYCODE4;
+//	uint8_t KEYCODE5;
+//	uint8_t KEYCODE6;
+//} keyboardHID;
 
-keyboardHID keyboardhid = {0,0,0,0,0,0,0,0};
+uint8_t keyboardhid[8] = {0,0,0,0,0,0,0,0};
+
+const uint8_t keymap[4][3] = {
+    {0x0F, 0x0F, 0x0F},	// back, play/pause, forward
+    {0x49, 0x4A, 0x4B}, // same as 6 on tkl/full-size
+    {0x4C, 0x4D, 0x4E},
+    {0x81, 0x7F, 0x80}	// Encoder vd, mute, vup
+};
 
 /* USER CODE END 0 */
 
@@ -118,17 +126,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	keyboardhid.MODIFIER = 0x02;  // left Shift
-	keyboardhid.KEYCODE1 = 0x04;  // press 'a'
-	keyboardhid.KEYCODE2 = 0x05;  // press 'b'
+	scan_keys();
 	USBD_HID_SendReport(&hUsbDeviceFS, (uint8_t *)&keyboardhid, sizeof (keyboardhid));
 	HAL_Delay (50);
 
-	keyboardhid.MODIFIER = 0x00;  // shift release
-	keyboardhid.KEYCODE1 = 0x00;  // release key
-	keyboardhid.KEYCODE2 = 0x00;  // release key
+	memset(keyboardhid, 0, sizeof(keyboardhid));
 	USBD_HID_SendReport(&hUsbDeviceFS, (uint8_t *)&keyboardhid, sizeof (keyboardhid));
-	HAL_Delay (1000);
   }
   /* USER CODE END 3 */
 }
@@ -185,7 +188,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE BEGIN TIM2_Init 0 */
 
-  /* USER CODE END TIM2_Init 0 */
+  /* USER CODE END TIM2_Init 0 */l
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
@@ -280,6 +283,42 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void scan_keys()
+{
+	uint8_t counter = 2;
+	// scan encoder
+	if (HAL_GPIO_ReadPin(GPIOA, MUTE_Pin) == GPIO_PIN_RESET){
+		keyboardhid[counter] = keymap[3][1];
+		counter++;
+	}
+
+	for (uint8_t col = 0; col < 3; ++col){
+		HAL_GPIO_WritePin(GPIOA, KC1_Pin|KC2_Pin|KC3_Pin, GPIO_PIN_RESET);
+
+		if (col == 0) HAL_GPIO_WritePin(GPIOA, KC1_Pin, GPIO_PIN_SET);
+        if (col == 1) HAL_GPIO_WritePin(GPIOA, KC2_Pin, GPIO_PIN_SET);
+        if (col == 2) HAL_GPIO_WritePin(GPIOA, KC3_Pin, GPIO_PIN_SET);
+        HAL_Delay(5); // small settle time
+
+        if (HAL_GPIO_ReadPin(GPIOA, KR1_Pin) == GPIO_PIN_SET) {
+        	keyboardhid[counter] = keymap[0][col];
+        	counter++;
+        	if (counter == 8) return;
+        }
+        if (HAL_GPIO_ReadPin(GPIOA, KR2_Pin) == GPIO_PIN_SET) {
+        	keyboardhid[counter] = keymap[1][col];
+        	counter++;
+        	if (counter == 8) return;
+        }
+        if (HAL_GPIO_ReadPin(GPIOA, KR3_Pin) == GPIO_PIN_SET) {
+        	keyboardhid[counter] = keymap[2][col];
+        	counter++;
+        	if (counter == 8) return;
+        }
+    }
+	return;
+}
 
 /* USER CODE END 4 */
 
