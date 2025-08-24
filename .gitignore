@@ -33,3 +33,23 @@ fp-info-cache
 
 *.json
 */production
+
+# STM32CubeIDE build output
+Debug/
+Release/
+build/
+bin/
+obj/
+
+# CubeIDE metadata (workspace-specific)
+.settings/
+.metadata/
+*.launch
+*.cproject
+*.project
+
+# Eclipse / CDT
+*.log
+*.tmp
+*.swp
+*.bak
