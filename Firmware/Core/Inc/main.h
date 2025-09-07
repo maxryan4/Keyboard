@@ -71,6 +71,7 @@ void Error_Handler(void);
 #define KR1_GPIO_Port GPIOA
 #define ENCB_Pin GPIO_PIN_12
 #define ENCB_GPIO_Port GPIOB
+#define ENCB_EXTI_IRQn EXTI4_15_IRQn
 #define ENCA_Pin GPIO_PIN_13
 #define ENCA_GPIO_Port GPIOB
 #define ENCA_EXTI_IRQn EXTI4_15_IRQn

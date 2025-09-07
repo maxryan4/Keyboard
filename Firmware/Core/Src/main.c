@@ -64,6 +64,7 @@ TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 volatile int8_t encoder_direction = 0; // +1 = CW, -1 = CCW
+volatile int8_t last_encoder_state = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -303,16 +304,35 @@ void send_consumer(uint16_t key) {
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-    if (GPIO_Pin == ENCA_Pin) {
-        // Read ENCB to determine rotation direction
-        if (HAL_GPIO_ReadPin(ENCB_GPIO_Port, ENCB_Pin) == GPIO_PIN_SET) {
-            encoder_direction = 1;   // Clockwise
-        }
-        else {
-            encoder_direction = -1;  // Counter-clockwise
-        }
+    uint8_t a = HAL_GPIO_ReadPin(ENCA_GPIO_Port, ENCA_Pin);
+    uint8_t b = HAL_GPIO_ReadPin(ENCB_GPIO_Port, ENCB_Pin);
+
+    uint8_t current_state = (a << 1) | b; // combine A and B
+    uint8_t combined = (last_encoder_state << 2) | current_state; // 4-bit state transition
+
+    switch (combined) {
+        case 0b0001:
+        case 0b0111:
+        case 0b1110:
+        case 0b1000:
+            encoder_direction = 1; // Clockwise
+            break;
+
+        case 0b0010:
+        case 0b1011:
+        case 0b1101:
+        case 0b0100:
+            encoder_direction = -1; // Counter-clockwise
+            break;
+
+        default:
+            // invalid/no movement
+            break;
     }
+
+    last_encoder_state = current_state;
 }
+
 
 
 void scan_keys(void)
