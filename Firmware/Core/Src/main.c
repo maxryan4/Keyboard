@@ -33,6 +33,20 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+// HID Keyboard usage IDs (normal keys)
+#define KBD_INSERT   0x49
+#define KBD_HOME     0x4A
+#define KBD_PGUP     0x4B
+#define KBD_DELETE   0x4C
+#define KBD_END      0x4D
+#define KBD_PGDOWN   0x4E
+
+// HID Consumer usage IDs (media keys)
+#define CONS_SCAN_NEXT   0xB5  // Next Track
+#define CONS_SCAN_PREV   0xB6  // Previous Track
+#define CONS_PLAY_PAUSE  0xCD  // Play/Pause
+#define CONS_STOP        0xB7  // Stop
+
 
 /* USER CODE END PD */
 
@@ -61,26 +75,21 @@ static void MX_TIM2_Init(void);
 /* USER CODE BEGIN 0 */
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
-//typedef struct
-//{
-//	uint8_t MODIFIER;
-//	uint8_t RESERVED;
-//	uint8_t KEYCODE1;
-//	uint8_t KEYCODE2;
-//	uint8_t KEYCODE3;
-//	uint8_t KEYCODE4;
-//	uint8_t KEYCODE5;
-//	uint8_t KEYCODE6;
-//} keyboardHID;
+uint8_t keyboardhid[9] = {0};   // Report ID + 8 bytes
+uint8_t consumerhid[3] = {0};   // Report ID + 2 bytes
 
-uint8_t keyboardhid[8] = {0,0,0,0,0,0,0,0};
 
-const uint8_t keymap[4][3] = {
-    {0x0F, 0x0F, 0x0F},	// back, play/pause, forward
-    {0x49, 0x4A, 0x4B}, // same as 6 on tkl/full-size
-    {0x4C, 0x4D, 0x4E},
-    {0x81, 0x7F, 0x80}	// Encoder vd, mute, vup
+// Keyboard keys (Report ID 1)
+const uint8_t keymap_kbd[2][3] = {
+    {KBD_INSERT, KBD_HOME, KBD_PGUP},   // Row 2
+    {KBD_DELETE, KBD_END,  KBD_PGDOWN}  // Row 3
 };
+
+// Consumer keys (Report ID 2)
+const uint16_t keymap_cons[1][3] = {
+    {CONS_SCAN_PREV, CONS_PLAY_PAUSE, CONS_SCAN_NEXT}  // Row 1
+};
+
 
 /* USER CODE END 0 */
 
@@ -127,11 +136,6 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	scan_keys();
-	USBD_HID_SendReport(&hUsbDeviceFS, (uint8_t *)&keyboardhid, sizeof (keyboardhid));
-	HAL_Delay (50);
-
-	memset(keyboardhid, 0, sizeof(keyboardhid));
-	USBD_HID_SendReport(&hUsbDeviceFS, (uint8_t *)&keyboardhid, sizeof (keyboardhid));
   }
   /* USER CODE END 3 */
 }
@@ -188,7 +192,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE BEGIN TIM2_Init 0 */
 
-  /* USER CODE END TIM2_Init 0 */l
+  /* USER CODE END TIM2_Init 0 */
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
@@ -284,41 +288,51 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void scan_keys()
+void scan_keys(void)
 {
-	uint8_t counter = 2;
-	// scan encoder
-	if (HAL_GPIO_ReadPin(GPIOA, MUTE_Pin) == GPIO_PIN_RESET){
-		keyboardhid[counter] = keymap[3][1];
-		counter++;
-	}
+    // Default = Report ID 1
+    keyboardhid[0] = 0x01;
+    keyboardhid[1] = 0x00; // Modifiers
+    keyboardhid[2] = 0x00; // Reserved
+    uint8_t kbd_count = 3;
 
-	for (uint8_t col = 0; col < 3; ++col){
-		HAL_GPIO_WritePin(GPIOA, KC1_Pin|KC2_Pin|KC3_Pin, GPIO_PIN_RESET);
-
-		if (col == 0) HAL_GPIO_WritePin(GPIOA, KC1_Pin, GPIO_PIN_SET);
+    for (uint8_t col = 0; col < 3; ++col) {
+        HAL_GPIO_WritePin(GPIOA, KC1_Pin|KC2_Pin|KC3_Pin, GPIO_PIN_RESET);
+        if (col == 0) HAL_GPIO_WritePin(GPIOA, KC1_Pin, GPIO_PIN_SET);
         if (col == 1) HAL_GPIO_WritePin(GPIOA, KC2_Pin, GPIO_PIN_SET);
         if (col == 2) HAL_GPIO_WritePin(GPIOA, KC3_Pin, GPIO_PIN_SET);
-        HAL_Delay(5); // small settle time
+        HAL_Delay(5);
 
+        // --- Row 0 = Consumer control ---
         if (HAL_GPIO_ReadPin(GPIOA, KR1_Pin) == GPIO_PIN_SET) {
-        	keyboardhid[counter] = keymap[0][col];
-        	counter++;
-        	if (counter == 8) return;
+            consumerhid[0] = 0x02;                   // Report ID
+            consumerhid[1] = keymap_cons[0][col] & 0xFF;
+            consumerhid[2] = (keymap_cons[0][col] >> 8) & 0xFF;
+            USBD_HID_SendReport(&hUsbDeviceFS, consumerhid, sizeof(consumerhid));
+            HAL_Delay(50);
+            memset(consumerhid, 0, sizeof(consumerhid));
+            USBD_HID_SendReport(&hUsbDeviceFS, consumerhid, sizeof(consumerhid));
         }
+
+        // --- Row 1 & 2 = Keyboard ---
         if (HAL_GPIO_ReadPin(GPIOA, KR2_Pin) == GPIO_PIN_SET) {
-        	keyboardhid[counter] = keymap[1][col];
-        	counter++;
-        	if (counter == 8) return;
+            keyboardhid[kbd_count++] = keymap_kbd[0][col];
         }
         if (HAL_GPIO_ReadPin(GPIOA, KR3_Pin) == GPIO_PIN_SET) {
-        	keyboardhid[counter] = keymap[2][col];
-        	counter++;
-        	if (counter == 8) return;
+            keyboardhid[kbd_count++] = keymap_kbd[1][col];
         }
     }
-	return;
+
+    // Only send keyboard report if keys pressed
+    if (kbd_count > 3) {
+        USBD_HID_SendReport(&hUsbDeviceFS, keyboardhid, sizeof(keyboardhid));
+        HAL_Delay(50);
+        memset(keyboardhid, 0, sizeof(keyboardhid));
+        keyboardhid[0] = 0x01;
+        USBD_HID_SendReport(&hUsbDeviceFS, keyboardhid, sizeof(keyboardhid));
+    }
 }
+
 
 /* USER CODE END 4 */
 
