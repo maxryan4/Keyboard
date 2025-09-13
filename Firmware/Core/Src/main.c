@@ -266,13 +266,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : ENCB_Pin */
   GPIO_InitStruct.Pin = ENCB_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(ENCB_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : ENCA_Pin */
   GPIO_InitStruct.Pin = ENCA_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(ENCA_GPIO_Port, &GPIO_InitStruct);
 
@@ -304,33 +304,37 @@ void send_consumer(uint16_t key) {
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+    // Read both pins on any interrupt
     uint8_t a = HAL_GPIO_ReadPin(ENCA_GPIO_Port, ENCA_Pin);
     uint8_t b = HAL_GPIO_ReadPin(ENCB_GPIO_Port, ENCB_Pin);
 
-    uint8_t current_state = (a << 1) | b; // combine A and B
-    uint8_t combined = (last_encoder_state << 2) | current_state; // 4-bit state transition
+    static uint8_t last_state = 0;
+    uint8_t current_state = (a << 1) | b;
+    int8_t movement = 0;
 
-    switch (combined) {
+    // Quadrature decoding (4-bit transition)
+    switch ((last_state << 2) | current_state) {
         case 0b0001:
         case 0b0111:
         case 0b1110:
         case 0b1000:
-            encoder_direction = 1; // Clockwise
+            movement = 1;  // Clockwise
             break;
 
         case 0b0010:
         case 0b1011:
         case 0b1101:
         case 0b0100:
-            encoder_direction = -1; // Counter-clockwise
+            movement = -1; // Counter-clockwise
             break;
 
         default:
-            // invalid/no movement
+            movement = 0;  // No valid movement
             break;
     }
 
-    last_encoder_state = current_state;
+    encoder_direction += movement;  // Accumulate steps
+    last_state = current_state;
 }
 
 
@@ -380,15 +384,14 @@ void scan_keys(void)
         }
     }
 
-    // Check encoder rotation
-    if (encoder_direction != 0) {
+    while (encoder_direction != 0) {
         if (encoder_direction > 0) {
             send_consumer(CONS_VOLUME_UP);
-        }
-        else {
+            encoder_direction--;
+        } else {
             send_consumer(CONS_VOLUME_DOWN);
+            encoder_direction++;
         }
-        encoder_direction = 0;  // reset after handling
     }
 
     // Only send keyboard report if keys pressed
